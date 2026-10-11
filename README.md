@@ -85,23 +85,10 @@ There are no accounts, no servers and no analytics.
 
 ## Requirements
 
-- A Mac with **Apple silicon**
 - **macOS 26** (Tahoe) or later
-- **Xcode 26** or later
-- **Apple Intelligence** turned on (System Settings → Apple Intelligence & Siri), for summaries and Ask
+- **Apple Intelligence** turned on (System Settings → Apple Intelligence & Siri) for summaries and Ask, which needs a Mac with Apple silicon
 
-## Build and run
-
-```bash
-git clone https://github.com/poojarysanjay05-oss/noted.git
-cd noted
-open Noted.xcodeproj
-```
-
-1. In Xcode, choose the **Noted** scheme and **My Mac**, then press <kbd>⌘</kbd><kbd>R</kbd>.
-2. The project signs with "Sign to Run Locally", so no Apple developer account is needed. To share the app with others, pick your team under *Signing & Capabilities*.
-
-### First recording
+## First recording
 
 1. Press **Start recording** (or <kbd>⌃</kbd><kbd>⌥</kbd><kbd>R</kbd>).
 2. Allow **Microphone** access.
