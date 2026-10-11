@@ -70,7 +70,7 @@ Noted listens to your **microphone** (you) and your **Mac's audio** (everyone el
 |---|---|
 | <img src="docs/screenshots/summary.png" alt="Meeting summary with key points, decisions and action items"> | <img src="docs/screenshots/ask.png" alt="Asking 'What did we decide about the budget?' with the answer and its source meeting"> |
 
-<sub>Screenshots use the built-in demo mode with made-up meetings.</sub>
+<sub>Screenshots use made-up sample meetings.</sub>
 
 ## Privacy
 
@@ -111,10 +111,6 @@ open Noted.xcodeproj
 4. The first time, macOS downloads its on-device speech model. This happens once.
 
 > **Tip:** use headphones. Otherwise your mic also picks up the other people, and their words appear under "You" as well.
-
-### Demo mode
-
-Debug builds (run from Xcode) have a **Developer → Demo Mode** menu. It relaunches Noted with four sample meetings stored only in memory, so your real meetings are never opened or changed. Turn it off the same way.
 
 ## Keyboard shortcuts
 
