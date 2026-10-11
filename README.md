@@ -43,8 +43,6 @@ Noted isn't signed with a paid Apple Developer ID yet, so macOS asks you to conf
 
 You only need to do this once per version. After an update, macOS may also ask again for Microphone and Screen & System Audio Recording access.
 
-> Prefer to build it yourself? See [Build and run](#build-and-run).
-
 ## What it does
 
 Noted listens to your **microphone** (you) and your **Mac's audio** (everyone else on Zoom, Google Meet, Teams or any other app). It turns both into a live transcript labelled **You** and **Others**. When the meeting ends, Apple Intelligence writes the minutes for you.
