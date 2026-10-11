@@ -24,14 +24,14 @@
 ## Install
 
 <p>
-  <a href="https://github.com/poojarysanjay05-oss/noted/releases/latest"><img src="https://img.shields.io/badge/Download-Noted.dmg-2ea44f?style=for-the-badge&logo=apple" alt="Download Noted.dmg"></a>
+  <a href="https://github.com/poojarysanjay05-oss/noted/releases/latest"><img src="https://img.shields.io/badge/Download-Noted%20for%20macOS-2ea44f?style=for-the-badge&logo=apple" alt="Download Noted for macOS"></a>
 </p>
 
-Requires a Mac with Apple silicon and **macOS 26** or later. Summaries and Ask need **Apple Intelligence** turned on.
+Requires **macOS 26** or later. Summaries and Ask need **Apple Intelligence**, which is available on Apple silicon Macs; on Intel Macs, recording and transcription still work.
 
-1. Download **Noted-x.y.dmg** from the [latest release](https://github.com/poojarysanjay05-oss/noted/releases/latest) and open it.
-2. Drag **Noted** into **Applications**.
-3. Open Noted from Applications.
+1. Download **Noted-x.y.zip** (or **.dmg**, when a release has one) from the [latest release](https://github.com/poojarysanjay05-oss/noted/releases/latest).
+2. Double-click the zip to unzip it, then move **Noted** into **Applications**. For a DMG, open it and drag Noted onto the Applications shortcut.
+3. Open Noted from Applications, and allow **Microphone** and **Screen & System Audio Recording** when asked.
 
 ### "Apple could not verify Noted…"
 
