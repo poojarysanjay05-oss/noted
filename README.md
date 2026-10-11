@@ -169,10 +169,6 @@ Bump **Version** (`MARKETING_VERSION`) in the target's General settings before e
 - [ ] Summary templates (stand-up, 1:1, interview, sales call)
 - [ ] Optional audio recording with click-to-play transcript
 
-## Acknowledgements
-
-Inspired by the open-source [Meetily](https://github.com/Zackriya-Solutions/meeting-minutes) project. Noted is a separate, native Swift app.
-
 ## License
 
 [MIT](LICENSE) © 2026 Sanjay Poojary
