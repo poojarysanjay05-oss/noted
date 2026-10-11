@@ -27,11 +27,11 @@
   <a href="https://github.com/poojarysanjay05-oss/noted/releases/latest"><img src="https://img.shields.io/badge/Download-Noted%20for%20macOS-2ea44f?style=for-the-badge&logo=apple" alt="Download Noted for macOS"></a>
 </p>
 
-Requires **macOS 26** or later. Summaries and Ask need **Apple Intelligence**, which is available on Apple silicon Macs; on Intel Macs, recording and transcription still work.
+Requires a Mac with **Apple silicon** and **macOS 26** or later. Summaries and Ask need **Apple Intelligence** turned on.
 
 1. Download **Noted-x.y.zip** (or **.dmg**, when a release has one) from the [latest release](https://github.com/poojarysanjay05-oss/noted/releases/latest).
 2. Double-click the zip to unzip it, then move **Noted** into **Applications**. For a DMG, open it and drag Noted onto the Applications shortcut.
-3. Open Noted from Applications, and allow **Microphone** and **Screen & System Audio Recording** when asked.
+3. Open Noted from Applications. The first time you press **Start recording**, allow **Microphone** and **Screen & System Audio Recording** access (see [First recording](#first-recording)).
 
 ### "Apple could not verify Noted…"
 
@@ -60,7 +60,7 @@ Noted listens to your **microphone** (you) and your **Mac's audio** (everyone el
 
 ## Screenshots
 
-| Live recording | Transcript |
+| New meeting | Transcript |
 |---|---|
 | <img src="docs/screenshots/recorder.png" alt="The New meeting screen with the notes pane"> | <img src="docs/screenshots/transcript.png" alt="A transcript with You and Others labels and timestamps"> |
 
@@ -85,8 +85,9 @@ There are no accounts, no servers and no analytics.
 
 ## Requirements
 
+- A Mac with **Apple silicon**
 - **macOS 26** (Tahoe) or later
-- **Apple Intelligence** turned on (System Settings → Apple Intelligence & Siri) for summaries and Ask, which needs a Mac with Apple silicon
+- **Apple Intelligence** turned on (System Settings → Apple Intelligence & Siri) for summaries and Ask
 
 ## First recording
 
@@ -102,8 +103,7 @@ There are no accounts, no servers and no analytics.
 | Shortcut | Action |
 |---|---|
 | <kbd>⌃</kbd><kbd>⌥</kbd><kbd>R</kbd> | Start or stop recording from any app |
-| <kbd>⇧</kbd><kbd>⌘</kbd><kbd>R</kbd> | Start or stop recording inside Noted |
-| <kbd>⌘</kbd><kbd>F</kbd> | Search meetings |
+| <kbd>⇧</kbd><kbd>⌘</kbd><kbd>R</kbd> | Start or stop recording on the New meeting screen |
 
 ## How it's built
 
