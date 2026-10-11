@@ -21,6 +21,30 @@
   <img src="docs/screenshots/summary.png" alt="A meeting summary in Noted with key points, decisions and action items" width="900">
 </p>
 
+## Install
+
+<p>
+  <a href="https://github.com/poojarysanjay05-oss/noted/releases/latest"><img src="https://img.shields.io/badge/Download-Noted.dmg-2ea44f?style=for-the-badge&logo=apple" alt="Download Noted.dmg"></a>
+</p>
+
+Requires a Mac with Apple silicon and **macOS 26** or later. Summaries and Ask need **Apple Intelligence** turned on.
+
+1. Download **Noted-x.y.dmg** from the [latest release](https://github.com/poojarysanjay05-oss/noted/releases/latest) and open it.
+2. Drag **Noted** into **Applications**.
+3. Open Noted from Applications.
+
+### "Apple could not verify Noted…"
+
+Noted isn't signed with a paid Apple Developer ID yet, so macOS asks you to confirm the first time:
+
+1. Open Noted once and click **Done** on the warning.
+2. Open **System Settings → Privacy & Security** and scroll down to the **Security** section.
+3. Next to *"Noted" was blocked to protect your Mac*, click **Open Anyway**, then confirm with your password or Touch ID.
+
+You only need to do this once per version. After an update, macOS may also ask again for Microphone and Screen & System Audio Recording access.
+
+> Prefer to build it yourself? See [Build and run](#build-and-run).
+
 ## What it does
 
 Noted listens to your **microphone** (you) and your **Mac's audio** (everyone else on Zoom, Google Meet, Teams or any other app). It turns both into a live transcript labelled **You** and **Others**. When the meeting ends, Apple Intelligence writes the minutes for you.
@@ -91,6 +115,20 @@ open Noted.xcodeproj
 ### Demo mode
 
 Debug builds (run from Xcode) have a **Developer → Demo Mode** menu. It relaunches Noted with four sample meetings stored only in memory, so your real meetings are never opened or changed. Turn it off the same way.
+
+### Making a release DMG
+
+No Apple Developer account is needed.
+
+1. In Xcode, choose **Product → Archive**. In the Organizer, click **Distribute App → Custom → Copy App** and export `Noted.app`.
+2. Package it:
+   ```bash
+   ./scripts/make-dmg.sh ~/Desktop/Noted/Noted.app
+   ```
+   This creates `dist/Noted-<version>.dmg` (and a `.sha256` checksum) with a drag-to-Applications window.
+3. Create a release at [Releases → Draft a new release](https://github.com/poojarysanjay05-oss/noted/releases/new) with a tag such as `v0.1.0`, attach the DMG, and publish.
+
+Bump **Version** (`MARKETING_VERSION`) in the target's General settings before each release. With a Developer ID you can also notarize: see the comments at the top of `scripts/make-dmg.sh`.
 
 ## Keyboard shortcuts
 
