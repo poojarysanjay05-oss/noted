@@ -133,7 +133,7 @@ open Noted.xcodeproj
 | `Noted/Ask/AskModel.swift` | Answers from those excerpts and reports which ones it used, so sources are accurate |
 | `Noted/GlobalHotKey.swift` | The system-wide <kbd>⌃</kbd><kbd>⌥</kbd><kbd>R</kbd> shortcut |
 | `Noted/Models.swift` | SwiftData models, search snippets and Markdown export |
-| `Noted/DemoMode.swift` | Sample meetings for Debug builds |
+| `Noted/DemoMode.swift` | A sample meeting for Debug builds |
 | `Noted/Views/` | SwiftUI: sidebar, recorder, meeting view, Ask, live waveform |
 
 ### Limits
