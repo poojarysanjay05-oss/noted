@@ -116,20 +116,6 @@ open Noted.xcodeproj
 
 Debug builds (run from Xcode) have a **Developer → Demo Mode** menu. It relaunches Noted with four sample meetings stored only in memory, so your real meetings are never opened or changed. Turn it off the same way.
 
-### Making a release DMG
-
-No Apple Developer account is needed.
-
-1. In Xcode, choose **Product → Archive**. In the Organizer, click **Distribute App → Custom → Copy App** and export `Noted.app`.
-2. Package it:
-   ```bash
-   ./scripts/make-dmg.sh ~/Desktop/Noted/Noted.app
-   ```
-   This creates `dist/Noted-<version>.dmg` (and a `.sha256` checksum) with a drag-to-Applications window.
-3. Create a release at [Releases → Draft a new release](https://github.com/poojarysanjay05-oss/noted/releases/new) with a tag such as `v0.1.0`, attach the DMG, and publish.
-
-Bump **Version** (`MARKETING_VERSION`) in the target's General settings before each release. With a Developer ID you can also notarize: see the comments at the top of `scripts/make-dmg.sh`.
-
 ## Keyboard shortcuts
 
 | Shortcut | Action |
