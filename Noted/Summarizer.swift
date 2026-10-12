@@ -12,13 +12,13 @@ struct MeetingSummary {
     @Guide(description: "A 2 to 4 sentence overview of what the meeting covered")
     var overview: String
 
-    @Guide(description: "The most important points discussed, one short sentence each", .maximumCount(6))
+    @Guide(description: "The most important points discussed, one short sentence each. Include every important point; don't leave any out")
     var keyPoints: [String]
 
-    @Guide(description: "Decisions that were made. Empty if none were made", .maximumCount(6))
+    @Guide(description: "Every decision that was made. Empty if none were made")
     var decisions: [String]
 
-    @Guide(description: "Follow-up tasks, naming the owner when one was mentioned. Empty if there are none", .maximumCount(8))
+    @Guide(description: "Every follow-up task, naming the owner when one was mentioned. Empty if there are none")
     var actionItems: [String]
 }
 
@@ -33,8 +33,8 @@ struct SummaryLine: Sendable {
 ///
 /// The model reads about 4,000 tokens at a time (prompt and answer together),
 /// so long meetings are summarized in two stages:
-///  1. **Condense**: each ~10-minute stretch of transcript becomes a few short
-///     bullet notes. These are saved on the meeting as they're made, and are
+///  1. **Condense**: each ~10-minute stretch of transcript becomes bullet
+///     notes. These are saved on the meeting as they're made, and are
 ///     made in the background while recording, so most of this work is done
 ///     by the time you ask for a summary.
 ///  2. **Write**: the notes (or, for short meetings, the transcript itself)
@@ -46,9 +46,9 @@ enum Summarizer {
     /// Material up to this size goes straight into the final write-up.
     static let directLimit = 7_000
     /// The user's own notes included in the final write-up, at most.
-    static let notesLimit = 1_500
-    /// Keeps each condensed part short. Writing is the slowest part of the work.
-    private static let condenseTokens = 220
+    static let notesLimit = 3_000
+    /// Bumped when condensing changes, so notes made the old way are redone.
+    static let condenseVersion = 2
 
     static var unavailableReason: String? {
         switch SystemLanguageModel.default.availability {
@@ -116,18 +116,16 @@ enum Summarizer {
 
     // MARK: Model calls
 
-    /// Turns one stretch of transcript into a few short bullet notes.
+    /// Turns one stretch of transcript into bullet notes, keeping the detail.
     static func condense(_ text: String) async throws -> String {
         guard !text.isEmpty else { return "" }
         let session = LanguageModelSession(instructions: """
-            You condense part of a meeting transcript into at most 8 short bullet notes. \
+            You condense part of a meeting transcript into brief bullet notes. \
             "You" is the person using this app and "Others" are the other participants. \
-            Keep names, numbers, dates, decisions and commitments. Skip small talk.
+            Keep who said what (You / Others), names, numbers, dates, decisions and \
+            commitments. Skip small talk.
             """)
-        let response = try await session.respond(
-            to: "Transcript excerpt:\n\(text)",
-            options: GenerationOptions(maximumResponseTokens: condenseTokens)
-        )
+        let response = try await session.respond(to: "Transcript excerpt:\n\(text)")
         return response.content.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
@@ -217,7 +215,8 @@ final class SummaryCenter {
             if let reason = Summarizer.unavailableReason { throw NotedError(reason) }
 
             let lines = meeting.summaryLines
-            if meeting.condensedSegmentCount > lines.count {
+            if meeting.condensedSegmentCount > lines.count
+                || (!meeting.condensedNotes.isEmpty && meeting.condensedVersion != Summarizer.condenseVersion) {
                 meeting.condensedNotes = []
                 meeting.condensedSegmentCount = 0
             }
@@ -251,6 +250,7 @@ final class SummaryCenter {
                     if meeting.condensedSegmentCount == start {
                         if !note.isEmpty { meeting.condensedNotes.append(note) }
                         meeting.condensedSegmentCount = next.end
+                        meeting.condensedVersion = Summarizer.condenseVersion
                         try? meeting.modelContext?.save()   // keep progress if Noted quits
                     }
                 }

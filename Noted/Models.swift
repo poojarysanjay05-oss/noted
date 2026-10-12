@@ -33,6 +33,8 @@ final class Meeting {
     var condensedNotes: [String] = []
     /// How many transcript lines (in time order) `condensedNotes` covers.
     var condensedSegmentCount: Int = 0
+    /// Which version of condensing made `condensedNotes` (see Summarizer.condenseVersion).
+    var condensedVersion: Int = 0
 
     /// True while the meeting is still being recorded. Saved meetings are written
     /// as they go, so if Noted quits mid-meeting this marks what to recover.

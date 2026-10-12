@@ -292,6 +292,7 @@ final class RecordingSession {
             if let note, !Task.isCancelled, target.condensedSegmentCount == start {
                 if !note.isEmpty { target.condensedNotes.append(note) }
                 target.condensedSegmentCount = chunk.end
+                target.condensedVersion = Summarizer.condenseVersion
             }
             self.condenseTask = nil
             self.condenseInBackgroundIfReady()   // catch up if more is already waiting
