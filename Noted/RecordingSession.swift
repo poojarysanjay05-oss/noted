@@ -47,6 +47,11 @@ final class RecordingSession {
     @ObservationIgnored private var systemTranscriber: LiveTranscriber?
     @ObservationIgnored private var autosaveTask: Task<Void, Never>?
     @ObservationIgnored private var hotKey: GlobalHotKey?
+    /// In-progress words waiting to be shown; batched so the screen isn't
+    /// redrawn for every tiny change the speech recognizer reports.
+    @ObservationIgnored private var pendingLive: [Speaker: String] = [:]
+    @ObservationIgnored private var liveFlushScheduled = false
+    private static let liveUpdateInterval: Duration = .milliseconds(150)
 
     /// How often notes, duration and new transcript lines are written to disk.
     private static let autosaveInterval: Duration = .seconds(5)
@@ -156,6 +161,7 @@ final class RecordingSession {
         await systemTranscriber?.finish()
 
         // Keep any words that were still "in progress" when we stopped.
+        flushPendingLive()
         for (speaker, text) in [(Speaker.me, liveMe), (Speaker.others, liveOthers)] where !text.isEmpty {
             addFinalSegment(LiveSegment(speaker: speaker, text: text, offset: duration))
         }
@@ -223,13 +229,30 @@ final class RecordingSession {
     private func handle(speaker: Speaker, text: String, isFinal: Bool) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         if isFinal {
+            pendingLive[speaker] = nil
             if !trimmed.isEmpty {
                 addFinalSegment(LiveSegment(speaker: speaker, text: trimmed, offset: elapsed))
             }
             setLive("", for: speaker)
+            updateCounter += 1
         } else {
-            setLive(trimmed, for: speaker)
+            pendingLive[speaker] = trimmed
+            guard !liveFlushScheduled else { return }
+            liveFlushScheduled = true
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(for: Self.liveUpdateInterval)
+                self?.flushPendingLive()
+            }
         }
+    }
+
+    private func flushPendingLive() {
+        liveFlushScheduled = false
+        guard !pendingLive.isEmpty else { return }
+        for (speaker, text) in pendingLive {
+            setLive(text, for: speaker)
+        }
+        pendingLive = [:]
         updateCounter += 1
     }
 

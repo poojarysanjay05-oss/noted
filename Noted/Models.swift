@@ -67,6 +67,14 @@ extension Meeting {
         segments.sorted { $0.offset < $1.offset }
     }
 
+    /// The transcript as plain values, sorted once. Views show these instead of
+    /// the stored segments, so redraws don't re-sort or re-read the database.
+    var transcriptLines: [TranscriptLine] {
+        orderedSegments.enumerated().map { index, segment in
+            TranscriptLine(id: index, speaker: segment.speaker, text: segment.text, offset: segment.offset)
+        }
+    }
+
     /// Plain-text transcript, one line per segment, used as input for summaries.
     var transcriptText: String {
         orderedSegments.map { "\($0.speaker.label): \($0.text)" }.joined(separator: "\n")
@@ -166,6 +174,14 @@ extension Meeting {
         }
         return md
     }
+}
+
+/// One transcript line, as a plain value for fast display.
+struct TranscriptLine: Identifiable, Hashable {
+    let id: Int
+    let speaker: Speaker
+    let text: String
+    let offset: TimeInterval
 }
 
 struct NotedError: LocalizedError {

@@ -24,6 +24,8 @@ struct MeetingDetailView: View {
     @State private var isSummarizing = false
     @State private var copied = false
     @State private var width: CGFloat = 900
+    /// Loaded once per meeting (see .task) rather than on every redraw.
+    @State private var transcript: [TranscriptLine] = []
 
     private var isCompact: Bool { width < 520 }
     private var edgePadding: CGFloat { isCompact ? 12 : 20 }
@@ -59,12 +61,12 @@ struct MeetingDetailView: View {
                     Label("Regenerate summary", systemImage: "sparkles")
                 }
                 .help("Regenerate summary")
-                .disabled(isSummarizing || meeting.segments.isEmpty)
+                .disabled(isSummarizing || transcript.isEmpty)
 
                 // Click copies whatever tab is showing; the arrow offers "Copy everything".
                 Menu {
                     Button("Copy \(tab.copyName)") { copy(textForCurrentTab) }
-                        .disabled(textForCurrentTab == nil)
+                        .disabled(!canCopyCurrentTab)
                     Button("Copy everything (Markdown)") { copy(meeting.markdown) }
                 } label: {
                     Label(copied ? "Copied" : "Copy \(tab.copyName)",
@@ -72,14 +74,15 @@ struct MeetingDetailView: View {
                 } primaryAction: {
                     copy(textForCurrentTab)
                 }
-                .help(textForCurrentTab == nil
-                      ? "Nothing to copy on this tab yet"
-                      : "Copy the \(tab.copyName.lowercased())")
+                .help(canCopyCurrentTab
+                      ? "Copy the \(tab.copyName.lowercased())"
+                      : "Nothing to copy on this tab yet")
             }
         }
         .task(id: meeting.persistentModelID) {
             tab = .summary
-            if meeting.overview == nil && meeting.summaryError == nil && !meeting.segments.isEmpty {
+            transcript = meeting.transcriptLines
+            if meeting.overview == nil && meeting.summaryError == nil && !transcript.isEmpty {
                 await summarize()
             }
         }
@@ -115,13 +118,13 @@ struct MeetingDetailView: View {
         case .summary:
             summaryView
         case .transcript:
-            if meeting.segments.isEmpty {
+            if transcript.isEmpty {
                 Text("No speech was captured in this meeting.")
                     .foregroundStyle(.secondary)
             } else {
                 LazyVStack(alignment: .leading, spacing: 12) {
-                    ForEach(meeting.orderedSegments) { segment in
-                        SegmentRow(speaker: segment.speaker, text: segment.text, offset: segment.offset)
+                    ForEach(transcript) { line in
+                        SegmentRow(speaker: line.speaker, text: line.text, offset: line.offset)
                     }
                 }
             }
@@ -154,7 +157,7 @@ struct MeetingDetailView: View {
                 BulletSection(title: "Action items", items: meeting.actionItems, checkboxes: true)
             }
             .textSelection(.enabled)
-        } else if meeting.segments.isEmpty {
+        } else if transcript.isEmpty {
             Text("No speech was captured in this meeting, so there's nothing to summarize.")
                 .foregroundStyle(.secondary)
         } else {
@@ -168,7 +171,17 @@ struct MeetingDetailView: View {
         isSummarizing = false
     }
 
-    /// The text the copy button copies for the tab that's showing.
+    /// Cheap check used while drawing; the copy text itself is only built on click.
+    private var canCopyCurrentTab: Bool {
+        switch tab {
+        case .summary: return meeting.overview != nil
+        case .transcript: return !transcript.isEmpty
+        case .notes: return meeting.hasNotes
+        }
+    }
+
+    /// The text the copy button copies for the tab that's showing. Only call
+    /// from a click: for long meetings this is a lot of text.
     private var textForCurrentTab: String? {
         switch tab {
         case .summary: return meeting.summaryMarkdown

@@ -339,13 +339,21 @@ struct SegmentRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(text)
                     .foregroundStyle(isLive ? .secondary : .primary)
-                    .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
                 if let offset {
                     Text(formatDuration(offset))
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                 }
+            }
+        }
+        .contentShape(Rectangle())
+        // Making every line selectable is slow with long transcripts, so a
+        // single line is copied from its right-click menu instead.
+        .contextMenu {
+            Button("Copy Line") {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString("\(speaker.label): \(text)", forType: .string)
             }
         }
     }
