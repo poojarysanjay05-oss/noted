@@ -58,9 +58,10 @@ struct MeetingDetailView: View {
                 Button {
                     Task { await summarize() }
                 } label: {
-                    Label("Regenerate summary", systemImage: "sparkles")
+                    Label(meeting.overview == nil ? "Generate summary" : "Regenerate summary",
+                          systemImage: "sparkles")
                 }
-                .help("Regenerate summary")
+                .help(meeting.overview == nil ? "Generate summary" : "Regenerate summary")
                 .disabled(isSummarizing || transcript.isEmpty)
 
                 // Click copies whatever tab is showing; the arrow offers "Copy everything".
@@ -79,12 +80,11 @@ struct MeetingDetailView: View {
                       : "Nothing to copy on this tab yet")
             }
         }
+        // Summaries are only written when you ask (Generate summary): it's
+        // heavy on-device work that can slow the whole Mac for long meetings.
         .task(id: meeting.persistentModelID) {
             tab = .summary
             transcript = meeting.transcriptLines
-            if meeting.overview == nil && meeting.summaryError == nil && !transcript.isEmpty {
-                await summarize()
-            }
         }
     }
 
@@ -161,7 +161,20 @@ struct MeetingDetailView: View {
             Text("No speech was captured in this meeting, so there's nothing to summarize.")
                 .foregroundStyle(.secondary)
         } else {
-            Button("Generate summary") { Task { await summarize() } }
+            VStack(alignment: .leading, spacing: 10) {
+                Text("No summary yet")
+                    .font(.headline)
+                Text("Apple Intelligence can write an overview, key points, decisions and action items for this meeting, here on your Mac. Long meetings can take a minute.")
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button {
+                    Task { await summarize() }
+                } label: {
+                    Label("Generate summary", systemImage: "sparkles")
+                }
+                .buttonStyle(.borderedProminent)
+                .padding(.top, 4)
+            }
         }
     }
 

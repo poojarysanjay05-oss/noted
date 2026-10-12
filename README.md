@@ -45,10 +45,10 @@ You only need to do this once per version. After an update, macOS may also ask a
 
 ## What it does
 
-Noted listens to your **microphone** (you) and your **Mac's audio** (everyone else on Zoom, Google Meet, Teams or any other app). It turns both into a live transcript labelled **You** and **Others**. When the meeting ends, Apple Intelligence writes the minutes for you.
+Noted listens to your **microphone** (you) and your **Mac's audio** (everyone else on Zoom, Google Meet, Teams or any other app). It turns both into a live transcript labelled **You** and **Others**. After the meeting, click **Generate summary** and Apple Intelligence writes the minutes for you.
 
 - 🎙️ **Live transcription, no bot.** Uses Apple's on-device speech recognition. Nobody gets a "Noted has joined" message.
-- ✨ **Automatic summaries.** An overview, key points, decisions and action items, plus a short title.
+- ✨ **One-click summaries.** An overview, key points, decisions and action items, plus a short title.
 - 📝 **Your notes count.** Jot notes beside the live transcript, and the summary treats them as the priorities.
 - 💬 **Ask your meetings.** "What did we decide about the budget?" or "What did others ask me to follow up on last week?" Answers link to the meetings they came from.
 - 🔍 **Search everything.** Titles, summaries, notes and full transcripts, with a snippet of each match.
