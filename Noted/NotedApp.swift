@@ -40,6 +40,14 @@ struct NotedApp: App {
         _session = State(initialValue: session)
     }
 
+    private var menuBarSymbol: String {
+        switch session.state {
+        case .recording: return "record.circle.fill"
+        case .paused, .pausing, .resuming: return "pause.circle.fill"
+        default: return "waveform"
+        }
+    }
+
     var body: some Scene {
         // A single window, so there is only ever one recording session.
         Window("Noted", id: "main") {
@@ -68,8 +76,9 @@ struct NotedApp: App {
             MenuBarContent()
                 .environment(session)
         } label: {
-            Image(systemName: session.state == .recording ? "record.circle.fill" : "waveform")
-                .accessibilityLabel(session.state == .recording ? "Noted is recording" : "Noted")
+            Image(systemName: menuBarSymbol)
+                .accessibilityLabel(session.state == .recording ? "Noted is recording"
+                                    : session.state == .paused ? "Noted is paused" : "Noted")
         }
         .modelContainer(container)
     }
@@ -92,9 +101,24 @@ private struct MenuBarContent: View {
             if let start = session.startDate {
                 Text("Recording since \(start.formatted(date: .omitted, time: .shortened))")
             }
+            Button("Pause Recording") {
+                Task { await session.pause() }
+            }
             Button("Stop Recording  \(RecordingSession.shortcutDisplay)") {
                 Task { await session.stop() }
             }
+        case .pausing:
+            Text("Pausing…")
+        case .paused:
+            Text("Paused at \(formatDuration(session.recordedTime()))")
+            Button("Resume Recording") {
+                Task { await session.resume() }
+            }
+            Button("Stop Recording  \(RecordingSession.shortcutDisplay)") {
+                Task { await session.stop() }
+            }
+        case .resuming:
+            Text("Resuming…")
         case .finishing:
             Text("Finishing transcript…")
         }

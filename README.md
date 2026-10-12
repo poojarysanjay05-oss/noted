@@ -52,6 +52,7 @@ Noted listens to your **microphone** (you) and your **Mac's audio** (everyone el
 - 📝 **Your notes count.** Jot notes beside the live transcript, and the summary treats them as the priorities.
 - 💬 **Ask your meetings.** "What did we decide about the budget?" or "What did others ask me to follow up on last week?" Answers link to the meetings they came from.
 - 🔍 **Search everything.** Titles, summaries, notes and full transcripts, with a snippet of each match.
+- ⏸️ **Pause and resume.** Pausing turns the microphone and Mac audio off completely, then picks up in the same meeting. Paused time is left out of the meeting's length.
 - ⌨️ **Start from anywhere.** <kbd>⌃</kbd><kbd>⌥</kbd><kbd>R</kbd> starts or stops recording in any app. A menu bar icon shows when you're recording.
 - 🛟 **Never lose a meeting.** Saves every few seconds and recovers meetings after a crash, quit or restart.
 - 🌊 **Live audio meters.** See that Noted can hear both you and the call.
@@ -104,6 +105,7 @@ There are no accounts, no servers and no analytics.
 |---|---|
 | <kbd>⌃</kbd><kbd>⌥</kbd><kbd>R</kbd> | Start or stop recording from any app |
 | <kbd>⇧</kbd><kbd>⌘</kbd><kbd>R</kbd> | Start or stop recording on the New meeting screen |
+| <kbd>⇧</kbd><kbd>⌘</kbd><kbd>P</kbd> | Pause or resume recording on the New meeting screen |
 
 ## How it's built
 
@@ -112,7 +114,7 @@ There are no accounts, no servers and no analytics.
 | `Noted/Audio/AudioCapture.swift` | ScreenCaptureKit: system audio (Others) and microphone (You) as separate streams |
 | `Noted/Audio/LiveTranscriber.swift` | Live on-device speech-to-text with `SpeechAnalyzer` |
 | `Noted/Audio/AudioLevels.swift` | Loudness history for the live waveform |
-| `Noted/RecordingSession.swift` | Start/stop, live transcript, saving as it goes, crash recovery |
+| `Noted/RecordingSession.swift` | Start, pause, resume and stop, live transcript, saving as it goes, crash recovery |
 | `Noted/Summarizer.swift` | Structured summaries with `FoundationModels`. Long meetings are condensed ~10 minutes at a time (during recording where possible), with progress saved as it goes |
 | `Noted/Ask/MeetingSearch.swift` | Finds the excerpts most relevant to a question (keywords, on-device sentence embeddings, dates like "last week") |
 | `Noted/Ask/AskModel.swift` | Answers from those excerpts and reports which ones it used, so sources are accurate |

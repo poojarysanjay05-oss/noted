@@ -109,6 +109,9 @@ struct ContentView: View {
             if session.state == .recording {
                 Label("Recording…", systemImage: "record.circle.fill")
                     .foregroundStyle(.red)
+            } else if session.state == .paused {
+                Label("Paused", systemImage: "pause.circle.fill")
+                    .foregroundStyle(.orange)
             } else {
                 Label("New meeting", systemImage: "plus.circle")
             }

@@ -155,20 +155,42 @@ struct RecorderView: View {
         .padding(.vertical, isCompact ? 10 : 14)
     }
 
+    /// Recording, paused, or switching between the two.
+    private var isInMeeting: Bool {
+        switch session.state {
+        case .recording, .pausing, .paused, .resuming: return true
+        default: return false
+        }
+    }
+
     @ViewBuilder
     private var status: some View {
-        if session.state == .recording, let start = session.startDate {
+        if isInMeeting, let start = session.startDate {
             HStack(spacing: isCompact ? 8 : 12) {
-                Image(systemName: "record.circle.fill")
-                    .foregroundStyle(.red)
-                    .symbolEffect(.pulse, options: .repeating)
-                    .accessibilityLabel("Recording")
-                TimelineView(.periodic(from: start, by: 1)) { timeline in
-                    Text(formatDuration(timeline.date.timeIntervalSince(start)))
-                        .font(.title3.monospacedDigit())
+                if session.state == .recording {
+                    Image(systemName: "record.circle.fill")
+                        .foregroundStyle(.red)
+                        .symbolEffect(.pulse, options: .repeating)
+                        .accessibilityLabel("Recording")
+                } else {
+                    Image(systemName: "pause.circle.fill")
+                        .foregroundStyle(.orange)
+                        .accessibilityLabel("Paused")
                 }
-                ListeningIndicator(levels: session.levels, compact: !isWide)
-                    .padding(.leading, isCompact ? 0 : 4)
+                // The clock leaves out paused time, and stands still while paused.
+                TimelineView(.periodic(from: start, by: 1)) { timeline in
+                    Text(formatDuration(session.recordedTime(at: timeline.date)))
+                        .font(.title3.monospacedDigit())
+                        .foregroundStyle(session.state == .recording ? .primary : .secondary)
+                }
+                if session.state == .recording {
+                    ListeningIndicator(levels: session.levels, compact: !isWide)
+                        .padding(.leading, isCompact ? 0 : 4)
+                } else if session.state == .paused && !isCompact {
+                    Text("Paused")
+                        .font(.callout.weight(.medium))
+                        .foregroundStyle(.orange)
+                }
             }
         } else {
             Text("New meeting")
@@ -193,17 +215,53 @@ struct RecorderView: View {
             busy("Getting ready…")
         case .recording:
             Button {
-                Task { await session.stop() }
+                Task { await session.pause() }
             } label: {
-                Label("Stop", systemImage: "stop.circle.fill")
+                adaptiveLabel("Pause", systemImage: "pause.fill")
+            }
+            .buttonStyle(.bordered)
+            .keyboardShortcut("p", modifiers: [.command, .shift])
+            .help("Pause recording (⇧⌘P). The microphone and Mac audio turn off until you resume.")
+            stopButton
+        case .pausing:
+            busy("Pausing…")
+        case .paused:
+            Button {
+                Task { await session.resume() }
+            } label: {
+                adaptiveLabel("Resume", systemImage: "play.fill")
             }
             .buttonStyle(.borderedProminent)
-            .tint(.red)
-            .keyboardShortcut("r", modifiers: [.command, .shift])
-            .help("Stop recording (⇧⌘R here, \(RecordingSession.shortcutDisplay) from any app)")
+            .keyboardShortcut("p", modifiers: [.command, .shift])
+            .help("Resume recording (⇧⌘P)")
+            stopButton
+        case .resuming:
+            busy("Resuming…")
         case .finishing:
             busy("Finishing transcript…")
         }
+    }
+
+    /// Icon only when the window is narrow, so Pause and Stop both fit.
+    @ViewBuilder
+    private func adaptiveLabel(_ title: String, systemImage: String) -> some View {
+        if isCompact {
+            Label(title, systemImage: systemImage).labelStyle(.iconOnly)
+        } else {
+            Label(title, systemImage: systemImage)
+        }
+    }
+
+    private var stopButton: some View {
+        Button {
+            Task { await session.stop() }
+        } label: {
+            Label("Stop", systemImage: "stop.circle.fill")
+        }
+        .buttonStyle(.borderedProminent)
+        .tint(.red)
+        .keyboardShortcut("r", modifiers: [.command, .shift])
+        .help("Stop recording (⇧⌘R here, \(RecordingSession.shortcutDisplay) from any app)")
     }
 
     private func busy(_ message: String) -> some View {
@@ -281,13 +339,15 @@ struct RecorderView: View {
                 }
                 .padding(.bottom, 4)
             } else {
-                Image(systemName: "mic.and.signal.meter")
+                Image(systemName: isInMeeting ? "pause.circle" : "mic.and.signal.meter")
                     .font(.system(size: isCompact ? 28 : 34))
                     .foregroundStyle(.secondary)
             }
             Text(session.state == .recording
                  ? "Listening… speak and you'll see the bars move."
-                 : "Press \(isCompact ? "Record" : "Start recording") when your meeting begins.")
+                 : isInMeeting
+                    ? "Paused. Nothing is being heard until you press Resume."
+                    : "Press \(isCompact ? "Record" : "Start recording") when your meeting begins.")
                 .font(.headline)
                 .multilineTextAlignment(.center)
             Text("Noted listens to your microphone and your Mac's audio. No bot joins the call, and everything stays on this Mac. Use headphones so your mic doesn't pick up the other side twice.")
@@ -358,3 +418,4 @@ struct SegmentRow: View {
         }
     }
 }
+

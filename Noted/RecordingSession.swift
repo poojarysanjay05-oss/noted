@@ -19,7 +19,7 @@ struct LiveSegment: Identifiable {
 @Observable
 final class RecordingSession {
     enum State: Equatable {
-        case idle, preparing, recording, finishing
+        case idle, preparing, recording, pausing, paused, resuming, finishing
     }
 
     /// The system-wide shortcut, shown in menus: Control-Option-R.
@@ -32,6 +32,10 @@ final class RecordingSession {
     /// Bumps on every transcript change so the view can auto-scroll.
     private(set) var updateCounter = 0
     private(set) var startDate: Date?
+    /// Time spent paused in earlier pauses, left out of the meeting's length.
+    private(set) var pausedTotal: TimeInterval = 0
+    /// When the current pause began, or nil while not paused.
+    private(set) var pauseStartedAt: Date?
     /// Set when a recording is saved, so the window can open that meeting.
     private(set) var lastSavedMeetingID: PersistentIdentifier?
     var notes = ""
@@ -63,18 +67,34 @@ final class RecordingSession {
         self.context = context
     }
 
-    private var elapsed: TimeInterval {
+    /// How much of the meeting has been recorded at `date`, not counting pauses.
+    /// The clock stands still while paused.
+    func recordedTime(at date: Date = Date()) -> TimeInterval {
         guard let startDate else { return 0 }
-        return Date().timeIntervalSince(startDate)
+        let end = pauseStartedAt ?? date
+        return max(0, end.timeIntervalSince(startDate) - pausedTotal)
     }
+
+    private var elapsed: TimeInterval { recordedTime() }
+
+    var isPaused: Bool { state == .paused }
 
     // MARK: Start / stop
 
     func toggle() async {
         switch state {
         case .idle: await start()
-        case .recording: await stop()
-        case .preparing, .finishing: break
+        case .recording, .paused: await stop()
+        case .preparing, .pausing, .resuming, .finishing: break
+        }
+    }
+
+    /// Pauses if recording, resumes if paused.
+    func togglePause() async {
+        switch state {
+        case .recording: await pause()
+        case .paused: await resume()
+        default: break
         }
     }
 
@@ -88,43 +108,11 @@ final class RecordingSession {
         notes = ""
         levels.reset()
 
+        pausedTotal = 0
+        pauseStartedAt = nil
+
         do {
-            guard await AVCaptureDevice.requestAccess(for: .audio) else {
-                throw NotedError("Noted needs microphone access. Turn it on in System Settings → Privacy & Security → Microphone.")
-            }
-
-            let locale = await LiveTranscriber.preferredLocale()
-            let handler: @MainActor (Speaker, String, Bool) -> Void = { [weak self] speaker, text, isFinal in
-                self?.handle(speaker: speaker, text: text, isFinal: isFinal)
-            }
-
-            let mic = LiveTranscriber(speaker: .me)
-            mic.onUpdate = handler
-            micTranscriber = mic
-            try await mic.start(locale: locale)
-
-            let system = LiveTranscriber(speaker: .others)
-            system.onUpdate = handler
-            systemTranscriber = system
-            try await system.start(locale: locale)
-
-            let capture = AudioCapture()
-            let levels = self.levels
-            capture.onMicrophone = { [weak mic] buffer in
-                levels.record(buffer.normalizedLevel, for: .me)
-                mic?.append(buffer)
-            }
-            capture.onSystemAudio = { [weak system] buffer in
-                levels.record(buffer.normalizedLevel, for: .others)
-                system?.append(buffer)
-            }
-            capture.onError = { [weak self] error in
-                Task { @MainActor in
-                    self?.errorMessage = "Audio capture stopped: \(error.localizedDescription)"
-                }
-            }
-            self.capture = capture
-            try await capture.start()
+            try await startAudio()
 
             // Create the meeting on disk straight away so nothing is lost if
             // Noted quits or the Mac restarts mid-meeting.
@@ -141,38 +129,56 @@ final class RecordingSession {
             NSSound(named: NSSound.Name("Tink"))?.play()
         } catch {
             errorMessage = error.localizedDescription
-            await capture?.stop()
-            micTranscriber?.cancel()
-            systemTranscriber?.cancel()
-            capture = nil
-            micTranscriber = nil
-            systemTranscriber = nil
+            await tearDownAudio()
             state = .idle
+        }
+    }
+
+    /// Pauses: turns the microphone and system audio off (so nothing is heard
+    /// at all) and stops the clock. Notes can still be typed while paused.
+    func pause() async {
+        guard state == .recording else { return }
+        state = .pausing
+        pauseStartedAt = Date()
+        await finishAudio()
+        levels.reset()
+        state = .paused
+        saveProgress()
+        NSSound(named: NSSound.Name("Pop"))?.play()
+    }
+
+    /// Picks up where the pause left off, in the same meeting.
+    func resume() async {
+        guard state == .paused else { return }
+        state = .resuming
+        errorMessage = nil
+        do {
+            try await startAudio()
+            if let pauseStartedAt {
+                pausedTotal += Date().timeIntervalSince(pauseStartedAt)
+            }
+            pauseStartedAt = nil
+            state = .recording
+            NSSound(named: NSSound.Name("Tink"))?.play()
+        } catch {
+            errorMessage = error.localizedDescription
+            await tearDownAudio()
+            state = .paused
         }
     }
 
     /// Stops recording and finishes saving the meeting.
     func stop() async {
-        guard state == .recording else { return }
+        guard state == .recording || state == .paused else { return }
         state = .finishing
         autosaveTask?.cancel()
         autosaveTask = nil
         // Don't hold up stopping; the rest is condensed when you ask for the summary.
         condenseTask?.cancel()
         condenseTask = nil
+
         let duration = elapsed
-
-        await capture?.stop()
-        await micTranscriber?.finish()
-        await systemTranscriber?.finish()
-
-        // Keep any words that were still "in progress" when we stopped.
-        flushPendingLive()
-        for (speaker, text) in [(Speaker.me, liveMe), (Speaker.others, liveOthers)] where !text.isEmpty {
-            addFinalSegment(LiveSegment(speaker: speaker, text: text, offset: duration))
-        }
-        liveMe = ""
-        liveOthers = ""
+        await finishAudio()   // already done if paused
 
         if let meeting {
             meeting.duration = duration
@@ -190,7 +196,81 @@ final class RecordingSession {
         segments = []
         notes = ""
         startDate = nil
+        pausedTotal = 0
+        pauseStartedAt = nil
+        levels.reset()
         state = .idle
+    }
+
+    // MARK: Audio
+
+    /// Starts the microphone, system audio and live transcription.
+    private func startAudio() async throws {
+        guard await AVCaptureDevice.requestAccess(for: .audio) else {
+            throw NotedError("Noted needs microphone access. Turn it on in System Settings → Privacy & Security → Microphone.")
+        }
+
+        let locale = await LiveTranscriber.preferredLocale()
+        let handler: @MainActor (Speaker, String, Bool) -> Void = { [weak self] speaker, text, isFinal in
+            self?.handle(speaker: speaker, text: text, isFinal: isFinal)
+        }
+
+        let mic = LiveTranscriber(speaker: .me)
+        mic.onUpdate = handler
+        micTranscriber = mic
+        try await mic.start(locale: locale)
+
+        let system = LiveTranscriber(speaker: .others)
+        system.onUpdate = handler
+        systemTranscriber = system
+        try await system.start(locale: locale)
+
+        let capture = AudioCapture()
+        let levels = self.levels
+        capture.onMicrophone = { [weak mic] buffer in
+            levels.record(buffer.normalizedLevel, for: .me)
+            mic?.append(buffer)
+        }
+        capture.onSystemAudio = { [weak system] buffer in
+            levels.record(buffer.normalizedLevel, for: .others)
+            system?.append(buffer)
+        }
+        capture.onError = { [weak self] error in
+            Task { @MainActor in
+                self?.errorMessage = "Audio capture stopped: \(error.localizedDescription)"
+            }
+        }
+        self.capture = capture
+        try await capture.start()
+    }
+
+    /// Stops capturing and waits for the last words to be transcribed, keeping
+    /// any that were still "in progress".
+    private func finishAudio() async {
+        await capture?.stop()
+        await micTranscriber?.finish()
+        await systemTranscriber?.finish()
+        capture = nil
+        micTranscriber = nil
+        systemTranscriber = nil
+
+        let offset = elapsed
+        flushPendingLive()
+        for (speaker, text) in [(Speaker.me, liveMe), (Speaker.others, liveOthers)] where !text.isEmpty {
+            addFinalSegment(LiveSegment(speaker: speaker, text: text, offset: offset))
+        }
+        liveMe = ""
+        liveOthers = ""
+    }
+
+    /// Abandons audio without waiting (used when starting fails).
+    private func tearDownAudio() async {
+        await capture?.stop()
+        micTranscriber?.cancel()
+        systemTranscriber?.cancel()
+        capture = nil
+        micTranscriber = nil
+        systemTranscriber = nil
     }
 
     // MARK: Saving as we go
@@ -207,7 +287,7 @@ final class RecordingSession {
     }
 
     private func saveProgress() {
-        guard state == .recording, let meeting else { return }
+        guard state == .recording || state == .paused, let meeting else { return }
         meeting.duration = elapsed
         meeting.notes = notes
         try? context.save()
