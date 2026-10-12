@@ -51,6 +51,9 @@ final class RecordingSession {
     /// redrawn for every tiny change the speech recognizer reports.
     @ObservationIgnored private var pendingLive: [Speaker: String] = [:]
     @ObservationIgnored private var liveFlushScheduled = false
+    /// Condenses finished stretches of the meeting while recording, so the
+    /// summary is mostly done by the time you stop.
+    @ObservationIgnored private var condenseTask: Task<Void, Never>?
     private static let liveUpdateInterval: Duration = .milliseconds(150)
 
     /// How often notes, duration and new transcript lines are written to disk.
@@ -154,6 +157,9 @@ final class RecordingSession {
         state = .finishing
         autosaveTask?.cancel()
         autosaveTask = nil
+        // Don't hold up stopping; the rest is condensed when you ask for the summary.
+        condenseTask?.cancel()
+        condenseTask = nil
         let duration = elapsed
 
         await capture?.stop()
@@ -262,6 +268,34 @@ final class RecordingSession {
         meeting?.segments.append(
             TranscriptSegment(speaker: segment.speaker, text: segment.text, offset: segment.offset)
         )
+        if state == .recording {
+            condenseInBackgroundIfReady()
+        }
+    }
+
+    /// Once about ten minutes of new transcript has built up, condenses it into
+    /// short notes in the background. The latest, unfinished stretch is left for
+    /// when you ask for the summary.
+    private func condenseInBackgroundIfReady() {
+        guard state == .recording, condenseTask == nil, let meeting,
+              Summarizer.unavailableReason == nil else { return }
+        // Live lines are in time order, the same order the saved meeting uses.
+        let lines = segments.map { SummaryLine(speaker: $0.speaker.label, text: $0.text) }
+        let start = meeting.condensedSegmentCount
+        guard let chunk = Summarizer.chunk(lines, from: start, requireFull: true) else { return }
+
+        let target = meeting
+        condenseTask = Task(priority: .background) { [weak self] in
+            let note = try? await Summarizer.condense(chunk.text)
+            // Stopped (or a new recording started) while this was running: drop it.
+            guard let self, self.meeting === target else { return }
+            if let note, !Task.isCancelled, target.condensedSegmentCount == start {
+                if !note.isEmpty { target.condensedNotes.append(note) }
+                target.condensedSegmentCount = chunk.end
+            }
+            self.condenseTask = nil
+            self.condenseInBackgroundIfReady()   // catch up if more is already waiting
+        }
     }
 
     private func setLive(_ text: String, for speaker: Speaker) {

@@ -1,5 +1,7 @@
 import Foundation
 import FoundationModels
+import SwiftData
+import Observation
 
 /// The structured summary Apple Intelligence fills in.
 @Generable
@@ -10,23 +12,43 @@ struct MeetingSummary {
     @Guide(description: "A 2 to 4 sentence overview of what the meeting covered")
     var overview: String
 
-    @Guide(description: "The most important points discussed, one short sentence each")
+    @Guide(description: "The most important points discussed, one short sentence each", .maximumCount(6))
     var keyPoints: [String]
 
-    @Guide(description: "Decisions that were made. Empty if none were made")
+    @Guide(description: "Decisions that were made. Empty if none were made", .maximumCount(6))
     var decisions: [String]
 
-    @Guide(description: "Follow-up tasks, naming the owner when one was mentioned. Empty if there are none")
+    @Guide(description: "Follow-up tasks, naming the owner when one was mentioned. Empty if there are none", .maximumCount(8))
     var actionItems: [String]
+}
+
+/// One transcript line as plain values, safe to hand to background work.
+struct SummaryLine: Sendable {
+    let speaker: String
+    let text: String
 }
 
 /// Summarizes meetings with Apple's on-device language model (macOS 26).
 /// Nothing leaves the Mac.
+///
+/// The model reads about 4,000 tokens at a time (prompt and answer together),
+/// so long meetings are summarized in two stages:
+///  1. **Condense**: each ~10-minute stretch of transcript becomes a few short
+///     bullet notes. These are saved on the meeting as they're made, and are
+///     made in the background while recording, so most of this work is done
+///     by the time you ask for a summary.
+///  2. **Write**: the notes (or, for short meetings, the transcript itself)
+///     become the overview, key points, decisions and action items.
 enum Summarizer {
-    /// The on-device model has a small context window, so long transcripts are
-    /// condensed in chunks first, then summarized.
-    private static let chunkLimit = 6_000
-    private static let directLimit = 8_000
+    /// Cleaned transcript text per condensing call (~2,000 tokens), leaving
+    /// room in the model's window for the instructions and the notes it writes.
+    static let chunkLimit = 8_000
+    /// Material up to this size goes straight into the final write-up.
+    static let directLimit = 7_000
+    /// The user's own notes included in the final write-up, at most.
+    static let notesLimit = 1_500
+    /// Keeps each condensed part short. Writing is the slowest part of the work.
+    private static let condenseTokens = 220
 
     static var unavailableReason: String? {
         switch SystemLanguageModel.default.availability {
@@ -43,70 +65,207 @@ enum Summarizer {
         }
     }
 
-    static func summarize(transcript: String, notes: String) async throws -> MeetingSummary {
-        if let reason = unavailableReason {
-            throw NotedError(reason)
-        }
+    // MARK: Cleaning
 
-        var material = transcript
+    /// Lines made only of these words carry no meaning for a summary.
+    /// ("yes" and "no" are kept: they can be answers to real questions.)
+    private static let fillerWords: Set<String> = [
+        "um", "umm", "uh", "uhh", "uhm", "erm", "hmm", "hm", "mm", "mmm", "mhm", "uh-huh",
+        "yeah", "yep", "yup", "okay", "ok", "sure", "cool", "great", "nice", "alright",
+        "right", "so", "well", "like", "thanks", "thank", "you", "got", "it", "oh", "ah",
+    ]
+
+    /// A transcript line with hesitations removed, or nil if nothing is left.
+    private static func clean(_ text: String) -> String? {
+        let stripped = text
+            .replacingOccurrences(of: #"(?i)\b(u+m+|u+h+|uhm|erm|h+m+|m+h+m+)\b[,.]?\s*"#,
+                                  with: "", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let words = stripped.lowercased()
+            .split(whereSeparator: { !$0.isLetter && $0 != "'" && $0 != "-" })
+        guard !words.isEmpty, !words.allSatisfy({ fillerWords.contains(String($0)) }) else { return nil }
+        return String(stripped.prefix(chunkLimit))
+    }
+
+    /// The next stretch of transcript to condense, starting at line `start`.
+    ///
+    /// Filler is removed and consecutive lines by the same speaker are joined,
+    /// which makes the text both shorter and easier for the model to follow.
+    /// With `requireFull`, returns nil until a whole chunk's worth is waiting
+    /// (used while recording, so the last stretch is left for later).
+    static func chunk(_ lines: [SummaryLine], from start: Int, requireFull: Bool) -> (end: Int, text: String)? {
+        guard start < lines.count else { return nil }
+        var text = ""
+        var lastSpeaker: String?
+        var index = start
+        while index < lines.count {
+            let line = lines[index]
+            if let cleaned = clean(line.text) {
+                let piece = line.speaker == lastSpeaker ? " " + cleaned : "\n\(line.speaker): \(cleaned)"
+                if !text.isEmpty && text.count + piece.count > chunkLimit {
+                    return (index, text.trimmingCharacters(in: .whitespacesAndNewlines))
+                }
+                text += piece
+                lastSpeaker = line.speaker
+            }
+            index += 1
+        }
+        if requireFull { return nil }
+        return (lines.count, text.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
+    // MARK: Model calls
+
+    /// Turns one stretch of transcript into a few short bullet notes.
+    static func condense(_ text: String) async throws -> String {
+        guard !text.isEmpty else { return "" }
+        let session = LanguageModelSession(instructions: """
+            You condense part of a meeting transcript into at most 8 short bullet notes. \
+            "You" is the person using this app and "Others" are the other participants. \
+            Keep names, numbers, dates, decisions and commitments. Skip small talk.
+            """)
+        let response = try await session.respond(
+            to: "Transcript excerpt:\n\(text)",
+            options: GenerationOptions(maximumResponseTokens: condenseTokens)
+        )
+        return response.content.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Shortens a long list of notes until it fits in one final write-up.
+    static func reduce(_ notes: [String]) async throws -> String {
+        var material = notes.filter { !$0.isEmpty }.joined(separator: "\n")
         var rounds = 0
         while material.count > directLimit && rounds < 3 {
-            material = try await condense(material)
+            var groups: [String] = []
+            var current = ""
+            for line in material.split(separator: "\n") {
+                if !current.isEmpty && current.count + line.count + 1 > chunkLimit {
+                    groups.append(current)
+                    current = ""
+                }
+                current += String(line) + "\n"
+            }
+            if !current.isEmpty { groups.append(current) }
+            var condensed: [String] = []
+            for group in groups {
+                try Task.checkCancellation()
+                condensed.append(try await condense(group))
+            }
+            material = condensed.joined(separator: "\n")
             rounds += 1
         }
+        return String(material.prefix(directLimit))
+    }
 
+    /// Writes the final structured summary from notes or a short transcript.
+    static func write(material: String, notes: String) async throws -> MeetingSummary {
         let session = LanguageModelSession(instructions: """
-            You write clear, factual meeting minutes. In the transcript, lines starting \
-            "You:" were said by the person using this app and lines starting "Others:" \
-            were said by other participants. Use only information from the material. \
-            Do not invent names, dates or numbers.
+            You write clear, factual meeting minutes. "You" is the person using this app \
+            and "Others" are the other participants. Use only information from the \
+            material. Do not invent names, dates or numbers.
             """)
-
         var prompt = "Meeting material:\n\(material)"
         let trimmedNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmedNotes.isEmpty {
-            prompt += "\n\nThe user's own notes from the meeting (treat these as the most important points):\n\(trimmedNotes)"
+            prompt += "\n\nThe user's own notes from the meeting (treat these as the most important points):\n\(trimmedNotes.prefix(notesLimit))"
         }
-
         let response = try await session.respond(to: prompt, generating: MeetingSummary.self)
         return response.content
     }
-
-    /// Condenses each chunk of a long transcript into short notes.
-    private static func condense(_ text: String) async throws -> String {
-        var partials: [String] = []
-        for chunk in chunks(of: text, limit: chunkLimit) {
-            let session = LanguageModelSession(instructions: """
-                You condense part of a meeting transcript into brief bullet notes. \
-                Keep who said what (You / Others), names, numbers, decisions and commitments.
-                """)
-            let response = try await session.respond(to: "Transcript excerpt:\n\(chunk)")
-            partials.append(response.content)
-        }
-        return partials.joined(separator: "\n")
-    }
-
-    private static func chunks(of text: String, limit: Int) -> [String] {
-        var result: [String] = []
-        var current = ""
-        for line in text.split(separator: "\n", omittingEmptySubsequences: false) {
-            if current.count + line.count + 1 > limit && !current.isEmpty {
-                result.append(current)
-                current = ""
-            }
-            current += String(line) + "\n"
-        }
-        if !current.isEmpty { result.append(current) }
-        return result
-    }
 }
 
+/// Runs summaries for any meeting, app-wide.
+///
+/// Work keeps going if you switch to another meeting, shows its progress, can
+/// be cancelled, and only one summary runs per meeting at a time.
 @MainActor
-enum SummaryRunner {
-    static func run(for meeting: Meeting) async {
+@Observable
+final class SummaryCenter {
+    static let shared = SummaryCenter()
+
+    struct Progress: Equatable {
+        var step: Int
+        var total: Int
+        var message: String
+    }
+
+    private(set) var progress: [PersistentIdentifier: Progress] = [:]
+    @ObservationIgnored private var tasks: [PersistentIdentifier: Task<Void, Never>] = [:]
+
+    func progress(for meeting: Meeting) -> Progress? {
+        progress[meeting.persistentModelID]
+    }
+
+    func start(_ meeting: Meeting) {
+        let id = meeting.persistentModelID
+        guard tasks[id] == nil else { return }
         meeting.summaryError = nil
+        progress[id] = Progress(step: 0, total: 1, message: "Getting ready…")
+        tasks[id] = Task { [weak self] in
+            await self?.run(meeting, id: id)
+            self?.tasks[id] = nil
+            self?.progress[id] = nil
+        }
+    }
+
+    func cancel(_ meeting: Meeting) {
+        tasks[meeting.persistentModelID]?.cancel()
+    }
+
+    private func run(_ meeting: Meeting, id: PersistentIdentifier) async {
         do {
-            let summary = try await Summarizer.summarize(transcript: meeting.transcriptText, notes: meeting.notes)
+            if let reason = Summarizer.unavailableReason { throw NotedError(reason) }
+
+            let lines = meeting.summaryLines
+            if meeting.condensedSegmentCount > lines.count {
+                meeting.condensedNotes = []
+                meeting.condensedSegmentCount = 0
+            }
+
+            let material: String
+            let whole = Summarizer.chunk(lines, from: 0, requireFull: false)
+            if meeting.condensedNotes.isEmpty, let whole, whole.end == lines.count,
+               whole.text.count <= Summarizer.directLimit {
+                // Short meeting: one pass straight from the transcript.
+                material = whole.text
+            } else {
+                // Long meeting: condense whatever wasn't condensed during recording.
+                var remaining = 0
+                var probe = meeting.condensedSegmentCount
+                while let next = Summarizer.chunk(lines, from: probe, requireFull: false) {
+                    remaining += 1
+                    probe = next.end
+                }
+                let total = remaining + 2
+                var step = 0
+                while meeting.condensedSegmentCount < lines.count {
+                    try Task.checkCancellation()
+                    let start = meeting.condensedSegmentCount
+                    guard let next = Summarizer.chunk(lines, from: start, requireFull: false) else { break }
+                    step += 1
+                    progress[id] = Progress(step: step, total: total,
+                                            message: "Reading part \(step) of \(max(remaining, step))…")
+                    let note = try await Summarizer.condense(next.text)
+                    guard !meeting.isDeleted else { return }
+                    // Something else (like recording) may have condensed this part already.
+                    if meeting.condensedSegmentCount == start {
+                        if !note.isEmpty { meeting.condensedNotes.append(note) }
+                        meeting.condensedSegmentCount = next.end
+                        try? meeting.modelContext?.save()   // keep progress if Noted quits
+                    }
+                }
+                try Task.checkCancellation()
+                progress[id] = Progress(step: total - 1, total: total, message: "Pulling it together…")
+                material = try await Summarizer.reduce(meeting.condensedNotes)
+            }
+
+            try Task.checkCancellation()
+            if let current = progress[id] {
+                progress[id] = Progress(step: max(current.total - 1, 0), total: current.total,
+                                        message: "Writing the summary…")
+            }
+            let summary = try await Summarizer.write(material: material, notes: meeting.notes)
+            guard !meeting.isDeleted else { return }
             meeting.overview = summary.overview
             meeting.keyPoints = summary.keyPoints
             meeting.decisions = summary.decisions
@@ -114,7 +273,12 @@ enum SummaryRunner {
             if meeting.title.hasPrefix(Meeting.defaultTitlePrefix) && !summary.title.isEmpty {
                 meeting.title = summary.title
             }
+            try? meeting.modelContext?.save()
+        } catch is CancellationError {
+            // Cancelled: parts already condensed stay saved, so the next try is quicker.
         } catch {
+            // Cancelling can surface as the model's own error; that isn't a failure.
+            guard !Task.isCancelled, !meeting.isDeleted else { return }
             meeting.summaryError = error.localizedDescription
         }
     }

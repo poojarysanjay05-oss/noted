@@ -21,7 +21,11 @@ struct MeetingDetailView: View {
 
     @Bindable var meeting: Meeting
     @State private var tab: Tab = .summary
-    @State private var isSummarizing = false
+    /// Summaries run app-wide, so they carry on if you switch meetings.
+    private var summaryProgress: SummaryCenter.Progress? {
+        SummaryCenter.shared.progress(for: meeting)
+    }
+    private var isSummarizing: Bool { summaryProgress != nil }
     @State private var copied = false
     @State private var width: CGFloat = 900
     /// Loaded once per meeting (see .task) rather than on every redraw.
@@ -56,7 +60,7 @@ struct MeetingDetailView: View {
         .toolbar {
             ToolbarItemGroup {
                 Button {
-                    Task { await summarize() }
+                    summarize()
                 } label: {
                     Label(meeting.overview == nil ? "Generate summary" : "Regenerate summary",
                           systemImage: "sparkles")
@@ -135,17 +139,30 @@ struct MeetingDetailView: View {
 
     @ViewBuilder
     private var summaryView: some View {
-        if isSummarizing {
-            HStack(spacing: 8) {
-                ProgressView().controlSize(.small)
-                Text("Writing the summary on this Mac…")
+        if let progress = summaryProgress {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Writing the summary on this Mac")
+                    .font(.headline)
+                ProgressView(value: Double(progress.step), total: Double(max(progress.total, 1))) {
+                    Text(progress.message)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: 420)
+                Text("You can keep using Noted while this runs. Finished parts are saved, so cancelling doesn't lose work.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button("Cancel") {
+                    SummaryCenter.shared.cancel(meeting)
+                }
+                .padding(.top, 2)
             }
-            .foregroundStyle(.secondary)
         } else if let error = meeting.summaryError {
             VStack(alignment: .leading, spacing: 10) {
                 Label(error, systemImage: "exclamationmark.triangle")
                     .foregroundStyle(.orange)
-                Button("Try again") { Task { await summarize() } }
+                Button("Try again") { summarize() }
             }
         } else if let overview = meeting.overview {
             VStack(alignment: .leading, spacing: 22) {
@@ -164,11 +181,11 @@ struct MeetingDetailView: View {
             VStack(alignment: .leading, spacing: 10) {
                 Text("No summary yet")
                     .font(.headline)
-                Text("Apple Intelligence can write an overview, key points, decisions and action items for this meeting, here on your Mac. Long meetings can take a minute.")
+                Text("Apple Intelligence can write an overview, key points, decisions and action items for this meeting, here on your Mac. Long meetings can take a few minutes.")
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 Button {
-                    Task { await summarize() }
+                    summarize()
                 } label: {
                     Label("Generate summary", systemImage: "sparkles")
                 }
@@ -178,10 +195,8 @@ struct MeetingDetailView: View {
         }
     }
 
-    private func summarize() async {
-        isSummarizing = true
-        await SummaryRunner.run(for: meeting)
-        isSummarizing = false
+    private func summarize() {
+        SummaryCenter.shared.start(meeting)
     }
 
     /// Cheap check used while drawing; the copy text itself is only built on click.

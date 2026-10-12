@@ -48,7 +48,7 @@ You only need to do this once per version. After an update, macOS may also ask a
 Noted listens to your **microphone** (you) and your **Mac's audio** (everyone else on Zoom, Google Meet, Teams or any other app). It turns both into a live transcript labelled **You** and **Others**. After the meeting, click **Generate summary** and Apple Intelligence writes the minutes for you.
 
 - 🎙️ **Live transcription, no bot.** Uses Apple's on-device speech recognition. Nobody gets a "Noted has joined" message.
-- ✨ **One-click summaries.** An overview, key points, decisions and action items, plus a short title.
+- ✨ **One-click summaries.** An overview, key points, decisions and action items, plus a short title. Long meetings are condensed in the background while you record, so even 2-hour meetings summarize quickly, with a progress bar you can cancel.
 - 📝 **Your notes count.** Jot notes beside the live transcript, and the summary treats them as the priorities.
 - 💬 **Ask your meetings.** "What did we decide about the budget?" or "What did others ask me to follow up on last week?" Answers link to the meetings they came from.
 - 🔍 **Search everything.** Titles, summaries, notes and full transcripts, with a snippet of each match.
@@ -113,7 +113,7 @@ There are no accounts, no servers and no analytics.
 | `Noted/Audio/LiveTranscriber.swift` | Live on-device speech-to-text with `SpeechAnalyzer` |
 | `Noted/Audio/AudioLevels.swift` | Loudness history for the live waveform |
 | `Noted/RecordingSession.swift` | Start/stop, live transcript, saving as it goes, crash recovery |
-| `Noted/Summarizer.swift` | Structured summaries with `FoundationModels`; long meetings are condensed in chunks first |
+| `Noted/Summarizer.swift` | Structured summaries with `FoundationModels`. Long meetings are condensed ~10 minutes at a time (during recording where possible), with progress saved as it goes |
 | `Noted/Ask/MeetingSearch.swift` | Finds the excerpts most relevant to a question (keywords, on-device sentence embeddings, dates like "last week") |
 | `Noted/Ask/AskModel.swift` | Answers from those excerpts and reports which ones it used, so sources are accurate |
 | `Noted/GlobalHotKey.swift` | The system-wide <kbd>⌃</kbd><kbd>⌥</kbd><kbd>R</kbd> shortcut |

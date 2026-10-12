@@ -136,6 +136,7 @@ struct ContentView: View {
     }
 
     private func delete(_ meeting: Meeting) {
+        SummaryCenter.shared.cancel(meeting)
         if selection == .meeting(meeting.persistentModelID) {
             selection = .recorder
         }
@@ -152,9 +153,15 @@ private struct MeetingRow: View {
         VStack(alignment: .leading, spacing: 3) {
             Text(meeting.title)
                 .lineLimit(1)
-            Text("\(meeting.date.formatted(date: .abbreviated, time: .shortened)) · \(formatDuration(meeting.duration))")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            HStack(spacing: 4) {
+                Text("\(meeting.date.formatted(date: .abbreviated, time: .shortened)) · \(formatDuration(meeting.duration))")
+                if SummaryCenter.shared.progress(for: meeting) != nil {
+                    Text("· Summarizing…")
+                }
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
             if let snippet {
                 Text(snippet)
                     .font(.caption)

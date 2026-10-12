@@ -27,6 +27,13 @@ final class Meeting {
     var actionItems: [String] = []
     var summaryError: String?
 
+    /// Short notes condensed from the transcript, a stretch at a time (made
+    /// while recording and when summarizing), so long summaries don't start
+    /// from scratch.
+    var condensedNotes: [String] = []
+    /// How many transcript lines (in time order) `condensedNotes` covers.
+    var condensedSegmentCount: Int = 0
+
     /// True while the meeting is still being recorded. Saved meetings are written
     /// as they go, so if Noted quits mid-meeting this marks what to recover.
     var isInProgress: Bool = false
@@ -65,6 +72,11 @@ extension Meeting {
 
     var orderedSegments: [TranscriptSegment] {
         segments.sorted { $0.offset < $1.offset }
+    }
+
+    /// The transcript as plain values for the summarizer, in time order.
+    var summaryLines: [SummaryLine] {
+        orderedSegments.map { SummaryLine(speaker: $0.speaker.label, text: $0.text) }
     }
 
     /// The transcript as plain values, sorted once. Views show these instead of
